@@ -1,0 +1,11 @@
+{
+  "name": "مركز باحريش التجاري",
+  "short_name": "باحريش",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f2342",
+  "theme_color": "#0f2342",
+  "dir": "rtl",
+  "lang": "ar"
+}
+
