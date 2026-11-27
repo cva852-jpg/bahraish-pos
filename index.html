@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>مركز باحريش التجاري</title>
-<link rel="manifest" href="./manifest.json" />
-<meta name="theme-color" content="#0f2342" />
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0f2342" />
 
   <style>
     :root {
@@ -619,7 +619,6 @@
       <div id="sec-set" class="section">
         <h3 style="margin:6px 0 10px; font-size:16px;" id="ui-set-title">إعدادات البرنامج والنسخ الاحتياطي</h3>
 
-        <!-- مربع 1: اللغة والشعار وسعر الصرف -->
         <div class="set-box">
           <h4 id="ui-set-general-h">1. اللغة والشعار وسعر الصرف</h4>
           <div class="grid" style="margin-bottom:0;">
@@ -646,7 +645,6 @@
           </div>
         </div>
 
-        <!-- مربع 2: كلمات السر والصلاحيات -->
         <div class="set-box">
           <h4 id="ui-set-sec-h">2. كلمات السر والصلاحيات</h4>
           <div class="grid" style="margin-bottom:0;">
@@ -667,7 +665,6 @@
           </div>
         </div>
 
-        <!-- مربع 3: النسخ الاحتياطي والتحديث -->
         <div class="set-box" style="margin-bottom:0;">
           <h4 id="ui-set-bak-h">3. النسخ الاحتياطي وتحديث البرنامج</h4>
           <div class="warn" id="ui-bak-warn">احفظ نسخة احتياطية يومية في بطاقة SD أو قوقل درايف حتى لا تضيع بياناتك عند الفرمتة أو أي خلل.</div>
@@ -1388,9 +1385,19 @@
       var prof = (pr - (uCostSar * r1())) * q;
       var dt = new Date().toLocaleDateString("ar-YE");
       var cust = custIn || "نقدي";
-      data.sales.unshift({ ts: Date.now(), dt: dt, name: it.name, q: q, tot: tot, tp: tp, cust: cust, prof: prof });
+      var saleRecord = { ts: Date.now(), dt: dt, name: it.name, q: q, tot: tot, tp: tp, cust: cust, prof: prof };
+      data.sales.unshift(saleRecord);
       if (tp === "دين") data.debts.unshift({ ts: Date.now(), person: cust, amt: tot, note: it.name + " (" + q + ")", dt: dt });
       saveData();
+
+      if (typeof window.syncSaleToCloud === "function") {
+        window.syncSaleToCloud({
+          ...saleRecord,
+          total: tot,
+          worker: currentRole === "worker" ? "العامل" : "المدير"
+        });
+      }
+
       document.getElementById("pos-qty").value = "1";
       document.getElementById("pos-cust").value = "";
       document.getElementById("pos-q").value = "";
@@ -1799,15 +1806,85 @@
     syncUnits();
     refreshAll();
     applyPermissions();
-</script>
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function() {
-      navigator.serviceWorker.register("./sw.js").catch(function() {});
-    });
-  }
-</script>
+  </script>
 
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function() {
+        navigator.serviceWorker.register("./sw.js").catch(function() {});
+      });
+    }
+  </script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      onSnapshot,
+      query,
+      orderBy,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBqBADA5y8D3X6mNMTxPnqHzLhP-ORX9ts",
+      authDomain: "bahraish-pos.firebaseapp.com",
+      projectId: "bahraish-pos",
+      storageBucket: "bahraish-pos.firebasestorage.app",
+      messagingSenderId: "371797569045",
+      appId: "1:371797569045:web:444e285a66504ac385681c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const salesRef = collection(db, "sales");
+
+    window.syncSaleToCloud = async function (saleData) {
+      try {
+        await addDoc(salesRef, {
+          ...saleData,
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("خطأ في مزامنة البيع:", err);
+      }
+    };
+
+    if ("Notification" in window && Notification.permission === "default") {
+      document.addEventListener("click", () => {
+        Notification.requestPermission();
+      }, { once: true });
+    }
+
+    let isInitialLoad = true;
+    const q = query(salesRef, orderBy("createdAt", "desc"));
+
+    onSnapshot(q, (snapshot) => {
+      const allSales = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      if (typeof window.renderCloudSales === "function") {
+        window.renderCloudSales(allSales);
+      }
+
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const sale = change.doc.data();
+          const title = "مبيعة جديدة - مركز باحريش التجاري";
+          const body = `المبلغ: ${sale.total ?? ""} | العامل: ${sale.worker ?? "نقطة البيع"}`;
+
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(title, { body });
+          }
+        }
+      });
+    });
+  </script>
 </body>
 </html>
-
